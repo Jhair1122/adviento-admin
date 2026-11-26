@@ -83,7 +83,7 @@
             </label>
 
             <fieldset class="media-box">
-              <legend>Foto, audio o video</legend>
+              <legend>📷 Foto, nota de voz o video</legend>
               <div id="mediaPreview" class="media-preview"></div>
               <div class="row">
                 <label class="file-btn btn">
@@ -95,8 +95,22 @@
               <p class="muted small">Máximo 50 MB. Se guarda como <code id="mediaName">dia_XX</code> y reemplaza el anterior.</p>
             </fieldset>
 
-            <label>Enlace <span class="muted small">(Spotify u otro; aparece como botón)</span>
-              <input id="fLink" type="url" placeholder="https://open.spotify.com/playlist/…">
+            <fieldset class="media-box" id="musicBox">
+              <legend>🎶 Música (se reproduce dentro de la app)</legend>
+              <div id="musicPreview" class="media-preview"></div>
+              <div class="row">
+                <label class="file-btn btn">
+                  <span>🎵 Subir canción (.mp3)</span>
+                  <input id="fMusic" type="file" accept="audio/*,.mp3,.m4a" hidden>
+                </label>
+                <button type="button" class="btn ghost" id="musicRemove" hidden>Quitar</button>
+              </div>
+              <p class="muted small">Se guarda como <code id="musicName">dia_XX_musica.mp3</code>. Aparece en la carta con un botón para reproducir y pausar.</p>
+              <p id="surpriseNote" class="muted small" hidden></p>
+            </fieldset>
+
+            <label>Enlace opcional <span class="muted small">(aparece como un botón «Abrir enlace»; déjalo vacío si no lo necesitas)</span>
+              <input id="fLink" type="url" placeholder="https://…">
             </label>
 
             <div id="couponFields" class="row two">

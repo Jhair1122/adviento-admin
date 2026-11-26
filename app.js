@@ -18,7 +18,7 @@ const pad = (n) => String(n).padStart(2, "0");
 
 const CAT = {
   CARTA:      { emoji: "💌", label: "Carta" },
-  PLAYLIST:   { emoji: "🎧", label: "Playlist" },
+  PLAYLIST:   { emoji: "🎧", label: "Canción" },
   CUPON:      { emoji: "🎟️", label: "Cupón especial" },
   RETO:       { emoji: "🎯", label: "Misión" },
   RECUERDO:   { emoji: "📸", label: "Recuerdo" },
@@ -37,6 +37,10 @@ const TYPE_BY_EXT = {
   mp4: "VIDEO", mov: "VIDEO", webm: "VIDEO",
 };
 const MAX_BYTES = 50 * 1024 * 1024;
+const SURPRISE = {
+  2: "corazones que suben y mensajes que aparecen al ritmo de la canción",
+  15: "un cielo de estrellas con estrellas fugaces y un deseo para pedir",
+};
 const LINT_RE = /te quiero|\bquerer/gi;
 
 const state = {
@@ -222,7 +226,8 @@ function dayCard(d) {
   if (d.reaction) tags.push(`<span class="tag">${REACT[d.reaction] || ""}</span>`);
   if (d.media_path) tags.push(`<span class="tag">${MEDIA_ICON[d.media_type] || "📎"}</span>`);
   else if (d.category === "RECUERDO") tags.push(`<span class="tag bad">sin archivo</span>`);
-  if (d.category === "PLAYLIST" && !d.external_link) tags.push(`<span class="tag bad">sin enlace</span>`);
+  if (d.music_path) tags.push(`<span class="tag">🎶 música</span>`);
+  else if (d.category === "PLAYLIST") tags.push(`<span class="tag bad">sin música</span>`);
   return `<button class="day ${d.category === "GRAN_FINAL" ? "final" : ""}" data-n="${d.day_number}">
     <span class="n">${d.day_number}</span>
     <span class="ttl">${esc(d.title)}</span>
@@ -329,12 +334,12 @@ function buildChecks() {
   add(noMedia.length ? "bad" : "ok", noMedia.length ? "Recuerdos sin foto, audio o video" : "Todos los recuerdos tienen su archivo", noMedia.map((x) => x.day_number));
 
   if (state.filesOk) {
-    const missing = d.filter((x) => x.media_path && !files.has(x.media_path));
+    const missing = d.filter((x) => (x.media_path && !files.has(x.media_path)) || (x.music_path && !files.has(x.music_path)));
     add(missing.length ? "bad" : "ok", missing.length ? "Días que apuntan a un archivo que no existe" : "Todos los archivos existen en el almacenamiento", missing.map((x) => x.day_number));
   }
 
-  const noLink = d.filter((x) => x.category === "PLAYLIST" && !x.external_link);
-  add(noLink.length ? "bad" : "ok", noLink.length ? "Playlists sin enlace de Spotify" : "Las playlists tienen su enlace", noLink.map((x) => x.day_number));
+  const noMusic = d.filter((x) => x.category === "PLAYLIST" && !x.music_path);
+  add(noMusic.length ? "bad" : "ok", noMusic.length ? "Días de canción sin archivo de música (.mp3)" : "Los días de canción tienen su música", noMusic.map((x) => x.day_number));
 
   const badLink = d.filter((x) => x.external_link && !/^https?:\/\//i.test(x.external_link));
   if (badLink.length) add("bad", "Enlaces que no empiezan con https://", badLink.map((x) => x.day_number));
@@ -512,6 +517,7 @@ function readForm() {
     message_body: $("#fBody").value,
     media_type: editing.media_type,
     media_path: editing.media_path || "",
+    music_path: editing.music_path || "",
     external_link: $("#fLink").value,
     coupon_title: $("#fCouponTitle").value,
     coupon_code: $("#fCouponCode").value,
@@ -521,7 +527,8 @@ function readForm() {
 function openEditor(n) {
   const d = state.days.find((x) => x.day_number === n);
   if (!d) return;
-  editing = { n, media_type: d.media_type, media_path: d.media_path, oldPath: d.media_path, bust: 0 };
+  editing = { n, media_type: d.media_type, media_path: d.media_path, oldPath: d.media_path,
+    music_path: d.music_path, oldMusic: d.music_path, bust: 0 };
   dirty = false;
   $("#editorTitle").textContent = `Día ${n} · ${n} de diciembre`;
   $("#fTitle").value = d.title;
@@ -558,6 +565,17 @@ function syncEditor() {
   else if (p && t === "VIDEO") box.innerHTML = `<video controls preload="metadata" src="${esc(publicUrl(p, editing.bust))}"></video>`;
   else box.innerHTML = `<p class="muted small">Este día no tiene archivo.</p>`;
   $("#mediaRemove").hidden = !p;
+
+  $("#musicName").textContent = `dia_${pad(n)}_musica.ext`;
+  const mp = editing.music_path;
+  $("#musicPreview").innerHTML = mp
+    ? `<audio controls preload="metadata" src="${esc(publicUrl(mp, editing.bust))}"></audio>`
+    : `<p class="muted small">Este día no tiene música.</p>`;
+  $("#musicRemove").hidden = !mp;
+  const note = $("#surpriseNote");
+  const sur = SURPRISE[n];
+  note.hidden = !sur;
+  if (sur) note.textContent = `🎁 Al reproducir la canción de este día, la app muestra una sorpresa: ${sur}.`;
   $("#bodyCount").textContent = `${$("#fBody").value.length} caracteres`;
   refreshPreview();
   refreshLint();
@@ -583,7 +601,8 @@ function refreshPreview() {
     ${paras.map((p) => `<p>${esc(p)}</p>`).join("")}
     <div class="firma">Con todo mi amor,<br>Jhair</div>
     ${showCoupon ? `<div class="ticket"><small>VALE POR</small><b>${esc(v.coupon_title)}</b>${v.coupon_code.trim() ? `<small style="margin-top:6px">CÓDIGO ${esc(v.coupon_code)}</small>` : ""}</div>` : ""}
-    ${v.external_link.trim() ? `<span class="linkbtn">${v.category === "PLAYLIST" ? "🎧 Abrir en Spotify" : "Abrir enlace"}</span>` : ""}`;
+    ${editing.music_path ? `<span class="linkbtn" style="background:#5a1a24">▶ Reproducir canción</span>` : ""}
+    ${v.external_link.trim() ? `<span class="linkbtn">Abrir enlace</span>` : ""}`;
 }
 
 function refreshLint() {
@@ -606,7 +625,7 @@ function markDirty() {
   .forEach((id) => $("#" + id).addEventListener("input", markDirty));
 
 function setBusy(b) {
-  ["editorSave", "editorCancel", "editorClose", "mediaRemove"].forEach((id) => ($("#" + id).disabled = b));
+  ["editorSave", "editorCancel", "editorClose", "mediaRemove", "musicRemove"].forEach((id) => ($("#" + id).disabled = b));
 }
 
 function tryClose() {
@@ -633,6 +652,7 @@ async function saveDay() {
       title: p.title.trim(), subtitle: p.subtitle.trim() || null, category: p.category,
       message_body: p.message_body, media_type: p.media_type,
       media_path: p.media_type === "NONE" ? null : (p.media_path.trim() || null),
+      music_path: p.music_path.trim() || null,
       external_link: p.external_link.trim() || null,
       coupon_title: p.coupon_title.trim() || null, coupon_code: p.coupon_code.trim() || null,
     });
@@ -641,7 +661,12 @@ async function saveDay() {
       await sb.storage.from(BUCKET).remove([editing.oldPath]);
       state.files = await listFiles();
     }
+    if (editing.oldMusic && editing.oldMusic !== d.music_path && /^dia_\d\d_musica\./.test(editing.oldMusic)) {
+      await sb.storage.from(BUCKET).remove([editing.oldMusic]);
+      state.files = await listFiles();
+    }
     editing.oldPath = d.media_path;
+    editing.oldMusic = d.music_path;
     dirty = false;
     $("#saveStatus").textContent = "Guardado ✓";
     renderDays(); renderDelivery(); renderBadges(); renderSettings();
@@ -702,6 +727,44 @@ $("#mediaRemove").addEventListener("click", async () => {
   markDirty();
   syncEditor();
   if (await saveDay()) toast("Archivo quitado ✓");
+});
+
+$("#fMusic").addEventListener("change", async (e) => {
+  const f = e.target.files[0];
+  e.target.value = "";
+  if (!f) return;
+  const ext = (f.name.split(".").pop() || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const isAudio = f.type.startsWith("audio/") || TYPE_BY_EXT[ext] === "AUDIO";
+  if (!isAudio) return toast("Sube un archivo de audio (.mp3 o .m4a).", "error");
+  if (f.size > MAX_BYTES) {
+    return toast(`Pesa ${(f.size / 1048576).toFixed(0)} MB; el máximo es 50 MB.`, "error");
+  }
+  const path = `dia_${pad(editing.n)}_musica.${ext || "mp3"}`;
+  setBusy(true);
+  $("#saveStatus").textContent = "Subiendo canción…";
+  const { error } = await sb.storage.from(BUCKET).upload(path, f, {
+    upsert: true, contentType: f.type || MIME_BY_EXT[ext] || "audio/mpeg", cacheControl: "3600",
+  });
+  setBusy(false);
+  if (error) {
+    $("#saveStatus").textContent = "";
+    return toast("No se pudo subir: " + error.message, "error");
+  }
+  editing.music_path = path;
+  editing.bust = Date.now();
+  state.files = await listFiles();
+  markDirty();
+  syncEditor();
+  await saveDay();
+  toast("Canción subida y guardada ✓");
+});
+
+$("#musicRemove").addEventListener("click", async () => {
+  if (!confirm("¿Quitar la canción de este día? También se borra del almacenamiento.")) return;
+  editing.music_path = null;
+  markDirty();
+  syncEditor();
+  if (await saveDay()) toast("Canción quitada ✓");
 });
 
 boot();
